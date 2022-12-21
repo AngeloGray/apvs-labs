@@ -34,49 +34,6 @@ const int a_size = 3;
             cout << "X" << i << " = " << a[i] << "\n";
         }
     }
-    // Функция для нахождения разности с опорной строкой (ref_row)
-    void RowElimination(vector<float>& row, vector<float>& ref_row, float element) {
-#pragma omp parallel for num_threads(2)
-        for (int i = 0; i < row.size(); i++) {
-            row[i] = row[i] - ref_row[i] * element;
-        }
-    }
-
-    // Функция для деления строки на ведущий элемент
-    void RowDivision(vector<float>& row, float element) {
-        for (int i = 0; i < row.size(); i++) {
-            row[i] = row[i] / element;
-        }
-    }
-    void Processing(float a[a_size][a_size+1], double delta) {
-        for (int k = 0; k < a_size; k++) {
-            if (abs(a[k][k]) < delta) {                  // Проверка.
-                for (int i = k + 1; i < a_size; i++) { // Если элемент
-                    if (a[i][k] > delta) {               // равен нулю, то
-                        swap(a[i], a[k]);           // поменять местами
-                        break;                           // строки с ненулевой
-                    }
-                }
-            }
-            // Если элемент не равен единице - делим строку на него
-            if (a[k][k] < (1 - delta) || a[k][k] > (1 + delta)) {
-                RowDivision(a[k], a[k][k]);
-            }
-            // прямой ход обнуления элементов матрицы
-            // отнять от оставшихся ниже строк опорную, умноженную на элемент
-
-            for (int i = k + 1; i < a_size; i++) {
-                RowElimination(a[i], a[k], a[i][k]);
-            }
-        }
-        // обратный ход обнуления элементов матрицы
-
-        for (int k = a_size - 1; k >= 0; k--) {
-            for (int i = k - 1; i >= 0; i--) { // Обратный ход реализуется здесь
-                RowElimination(a[i], a[k], a[i][k]);
-            }
-        }
-    }
 
 void MasterThread() {
     int numProc;
@@ -160,8 +117,6 @@ void MasterThread() {
     }
     cout << "LB_matrix\n";
     ShowMatrixEx(lb_matrix);
-    double delta = 1e-08;
-    Processing(lb_matrix, delta)
 
 
 
