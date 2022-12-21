@@ -6,7 +6,7 @@ using namespace std;
 
 const int a_size = 3;
     //Функция для печати матриц в консоль
-    void ShowMatrix(float a[a_size][a_size]) {
+    void ShowMatrix(vector<vector<float> >& a) {
     // Вывод матрицы
         for (int i = 0; i < a_size; i++) {
             for (int j = 0; j < a_size; j++) {
@@ -15,7 +15,7 @@ const int a_size = 3;
             cout << "\n";
         }
     }
-    void ShowMatrixEx(float a[a_size][a_size + 1]) {
+    void ShowMatrixEx(vector<vector<float> >& a) {
         for (int i = 0; i < a_size; i++) {
             for (int j = 0; j < a_size + 1; j++) {
                 if (a_size - j == 1) {
@@ -27,11 +27,58 @@ const int a_size = 3;
             cout << "\n";
         }
     }
-    void ShowVector(float a[a_size]){
+    void ShowVector(vector<float> & a){
         //Вывод решения системы уравнений
         cout << "Linear equations system answer is:" << endl;
         for (int i = 0; i < a_size; i++) {
             cout << "X" << i << " = " << a[i] << "\n";
+        }
+    }
+
+
+    // Функция для нахождения разности с опорной строкой (ref_row)
+    void RowElimination(vector<float>& row, vector<float>& ref_row, float element) {
+
+        for (int i = 0; i < row.size(); i++) {
+            row[i] = row[i] - ref_row[i] * element;
+        }
+    }
+
+    // Функция для деления строки на ведущий элемент
+    void RowDivision(vector<float>& row, float element) {
+        for (int i = 0; i < row.size(); i++) {
+            row[i] = row[i] / element;
+        }
+    }
+
+    // Основная функция для выполнения вычислений
+    void Processing(vector<vector<float> >& a, double delta) {
+        for (int k = 0; k < a.size(); k++) {
+            if (abs(a[k][k]) < delta) {                  // Проверка.
+                for (int i = k + 1; i < a.size(); i++) { // Если элемент
+                    if (a[i][k] > delta) {               // равен нулю, то
+                        swap(a[i], a[k]);           // поменять местами
+                        break;                           // строки с ненулевой
+                    }
+                }
+            }
+            // Если элемент не равен единице - делим строку на него
+            if (a[k][k] < (1 - delta) || a[k][k] > (1 + delta)) {
+                RowDivision(a[k], a[k][k]);
+            }
+            // прямой ход обнуления элементов матрицы
+            // отнять от оставшихся ниже строк опорную, умноженную на элемент
+
+            for (int i = k + 1; i < a.size(); i++) {
+                RowElimination(a[i], a[k], a[i][k]);
+            }
+        }
+        // обратный ход обнуления элементов матрицы
+
+        for (int k = a.size() - 1; k >= 0; k--) {
+            for (int i = k - 1; i >= 0; i--) { // Обратный ход реализуется здесь
+                RowElimination(a[i], a[k], a[i][k]);
+            }
         }
     }
 
@@ -40,23 +87,25 @@ void MasterThread() {
     MPI_Comm_size(MPI_COMM_WORLD, &numProc); // Кол-во процессов
 
     // Создание матрицы А
-    float a_matrix_v1[a_size][a_size];
+//float a_matrix_v1[a_size][a_size];
+    vector<vector<float>> a_matrix_v1(a_size);
     // Заполнение матрицы случайными элементами (симметрично)
     for (int i = 0; i < a_size; i++) {
         for (int j = 0; j < a_size; j++) {
-            a_matrix_v1[i][j] = rand() % 10; // заполняем строки элементами
+            a_matrix_v1[i].push_back(rand() % 10); // заполняем строки элементами
         }                                 // a[i][j] = {0, 9}
     }
+    ShowMatrix(a_matrix_v1);
     // Транспонирование матрицы
-    float a_matrix_v2[a_size][a_size];
+    vector<vector<float>> a_matrix_v2(a_size, vector <float>(a_size));
     for (int i = 0; i < a_size; i++) {
         for (int j = 0; j < a_size; j++) {
             a_matrix_v2[i][j] = a_matrix_v1[j][i];
         }
     }
-
-
-    float a_matrix[a_size][a_size], result = 0;
+    ShowMatrix(a_matrix_v2);
+    float result = 0;
+    vector<vector<float>> a_matrix(a_size, vector <float>(a_size));
     //Fill each cell of the matrix output.
     for (int i = 0; i < a_size; i++) {
         for (int j = 0; j < a_size; j++) {
@@ -73,12 +122,13 @@ void MasterThread() {
  
 
     // Реализация расчётом методом квадратных корней (Разложение Холецкого)
-            float l_matrix[a_size][a_size];
+    vector<vector<float>> l_matrix(a_size, vector <float>(a_size));
             for (int i = 0; i < a_size; i++) {
                 for (int j = 0; j < a_size; j++) {
                     l_matrix[i][j] = 0;
                 }
             }
+
             for (int i = 0; i < a_size; i++) {
                 for (int j = 0; j <= i; j++) {
                     l_matrix[i][j] = a_matrix[i][j];
@@ -95,17 +145,17 @@ void MasterThread() {
                     l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
                 }
             }
-            cout << "L_matrix\n";
-            ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
+           cout << "L_matrix\n";
+           ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
 
     // Добавление вектора b к полученной матрице
-    float b_vector[a_size];
+    vector <float> b_vector(a_size);
     for (int j = 0; j < a_size; j++) {
         b_vector[j] = rand() % 10; // заполняем строки элементами
     }
     ShowVector(b_vector);
 
-    float lb_matrix[a_size][a_size + 1];
+    vector<vector<float>> lb_matrix(a_size, vector <float>(a_size+1));
     for (int i = 0; i < a_size; i++) {
         for (int j = 0; j < a_size + 1; j++) {
             if (j == a_size) {
@@ -118,12 +168,40 @@ void MasterThread() {
     cout << "LB_matrix\n";
     ShowMatrixEx(lb_matrix);
 
+    double delta = 1e-08;
+    Processing(lb_matrix, delta);
+    cout << "LB_matrix_solved\n";
+    ShowMatrixEx(lb_matrix);
+
+    // транспонирование матрицы L
+    vector<vector<float>> lt_matrix(a_size, vector <float>(a_size));
+    for (int i = 0; i < a_size; i++) {
+        for (int j = 0; j < a_size; j++) {
+            lt_matrix[i][j] = l_matrix[j][i];
+        }
+    }
+    vector<vector<float>> lx_matrix(a_size, vector <float>(a_size + 1));
+    for (int i = 0; i < a_size; i++) {
+        for (int j = 0; j < a_size + 1; j++) {
+            if (j == a_size) {
+                lx_matrix[i][j] = lb_matrix[i][j];
+                continue;
+            }
+            lx_matrix[i][j] = lt_matrix[i][j];
+        }
+    }
+    cout << "Lx_matrix\n";
+    ShowMatrixEx(lx_matrix);
+
+    Processing(lx_matrix, delta);
+    cout << "LX_matrix_solved\n";
+    ShowMatrixEx(lx_matrix);
 
 
     // Отправление матрицы А второстепенным процессам
     for (auto i = 1; i < numProc; i++)
     {
-        MPI_Send(a_matrix, sizeof(a_matrix), MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+   //     MPI_Send(a_matrix, sizeof(a_matrix), MPI_FLOAT, i, 0, MPI_COMM_WORLD);
     }
     
 }
@@ -133,7 +211,7 @@ void SlaveThread() {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
     
     float recBufA[a_size][a_size];
-    MPI_Recv(recBufA, sizeof(recBufA), MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+ //   MPI_Recv(recBufA, sizeof(recBufA), MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     //cout << "Matrix in slave numba" << rank << endl;
     //ShowMatrix(recBufA);
