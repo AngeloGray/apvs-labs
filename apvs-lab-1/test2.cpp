@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <vector>
+#include <chrono>
 using namespace std;
 
     //Функции для печати матриц и векторов в консоль
@@ -38,7 +39,7 @@ using namespace std;
     void ShowResult(vector<vector<float>>& a) {
         cout << "Linear equations system answer is:" << endl;
         for (int i = 0; i < a.size(); i++) {
-            cout << "X" << i << " = " << a[i][a.size()] << "\n";
+            cout << "X" << i << " = " << a[i][a.size()] << " ";
         }
         cout << "\n";
     }
@@ -87,8 +88,7 @@ using namespace std;
 
     //Функция для генерации и преобразования матрицы A
     void GenMatA(vector<vector <float>> &a_matrix){
-        int rank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
+       
         // Создание матрицы А
         vector<vector<float>> a_matrix_v1(a_matrix.size());
         // Заполнение матрицы случайными элементами (симметрично)
@@ -97,7 +97,7 @@ using namespace std;
                 a_matrix_v1[i].push_back(rand() % 10); // заполняем строки элементами
             }                                 // a[i][j] = {0, 9}
         }
-        if (rank == 0) ShowMatrix(a_matrix_v1);
+
         // Транспонирование матрицы
         vector<vector<float>> a_matrix_v2(a_matrix.size(), vector <float>(a_matrix.size()));
         for (int i = 0; i < a_matrix.size(); i++) {
@@ -105,7 +105,7 @@ using namespace std;
                 a_matrix_v2[i][j] = a_matrix_v1[j][i];
             }
         }
-        if (rank == 0)ShowMatrix(a_matrix_v2);
+
         float result = 0;
         //Fill each cell of the matrix output.
         for (int i = 0; i < a_matrix.size(); i++) {
@@ -118,18 +118,13 @@ using namespace std;
                 result = 0; //Reset;
             }
         }
-        if (rank == 0)cout << "Matrix A:\n";
-        if (rank == 0)ShowMatrix(a_matrix);
+
     }
 
  
     //Функция для нахождения матрицы L методом Холецкого
   
     void FindMatLSerial(vector<vector<float>> &l_matrix) {
-        int numProc, rank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
-        MPI_Comm_size(MPI_COMM_WORLD, &numProc); // Кол-во процессов
-        if (rank == 0) {
             // Вычисление матрицы L методом Хоолецкого
             for (int j = 0; j < l_matrix.size(); j++) {
                 for (int k = 0; k < j; k++) {
@@ -142,19 +137,20 @@ using namespace std;
                     l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
                 }
             }
-            cout << "Serial Cholesky decomposition of matrix A: L= \n";
-            ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
-        }
+    //        cout << "Serial Cholesky decomposition of matrix A: L= \n";
+    //        ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
+        
     }
 
 
     //Функция для нахождения матрицы L методом Холецкого
    /*
-    void FindMatL(vector<vector<float>>& l_matrix) {
+    void FindMatLParallel(vector<vector<float>>& l_matrix) {
         int numProc, rank;
         MPI_Comm_size(MPI_COMM_WORLD, &numProc);
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+    
         double start, end;
         MPI_Barrier(MPI_COMM_WORLD); 
         if (rank == 0) {
@@ -164,9 +160,7 @@ using namespace std;
         // For each column
         int i, j, k;
         for (j = 0; j < l_matrix.size(); j++) {
-  
-             * Step 1:
-             * Update the diagonal element
+
 
 
             if (j % numProc == rank) {
@@ -180,11 +174,10 @@ using namespace std;
 
 
             // Broadcast row with new values to other processes
-            MPI_Bcast(l_matrix[j], l_matrix.size(), MPI_FLOAT, j % numProc, MPI_COMM_WORLD);
+            MPI_Bcast(l_matrix.data(), l_matrix.size(), MPI_FLOAT, j % numProc, MPI_COMM_WORLD);
 
      
-             * Step 2:
-             * Update the elements below the diagonal element
+         
       
 
              // Divide the rest of the work
@@ -201,14 +194,62 @@ using namespace std;
 
 
         MPI_Barrier(MPI_COMM_WORLD); 
-        if (rank == 0) {
-            end = MPI_Wtime();
-            printf("Testing OpenMpi implementation Output: \n");
-            printf("Runtime = %lf\n", end - start);
-        }
     }
     */
 
+    void FindMatLParallel(int argc, char** argv, vector<vector<float>>& L) {
+
+        MPI_Init(&argc, &argv); // MPI-инициализация
+        int npes, rank, n = L.size();
+        MPI_Comm_size(MPI_COMM_WORLD, &npes);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+
+        //MPI_Barrier(MPI_COMM_WORLD); 
+
+
+        // For each column
+        int i, j, k;
+        for (j = 0; j < n; j++) {
+
+          
+            if (j % npes == rank) {
+
+                for (k = 0; k < j; k++) {
+                    L[j][j] = L[j][j] - L[j][k] * L[j][k];
+                }
+
+                L[j][j] = sqrt(L[j][j]);
+            }
+
+            // Broadcast row with new values to other processes
+            MPI_Bcast(L[j].data(), n, MPI_DOUBLE, j % npes, MPI_COMM_WORLD);
+
+
+             // Divide the rest of the work
+            for (i = j + 1; i < n; i++) {
+                if (i % npes == rank) {
+                    for (k = 0; k < j; k++) {
+                        L[i][j] = L[i][j] - L[i][k] * L[j][k];
+                    }
+
+                    L[i][j] = L[i][j] / L[j][j];
+                }
+            }
+        }
+        if (rank == 0) {
+//            cout << "Parallel Cholesky decomposition of matrix A: L= \n";
+ //           ShowMatrix(L); // получили нижнюю треугольную матрицу
+        }
+        //MPI_Barrier(MPI_COMM_WORLD); /* Timing */
+
+        
+    }
+
+
+
+
+    /*
     //Функция для нахождения матрицы L методом Холецкого
     void FindMatLParallel(vector <vector <float>>& M) {
         int world_rank, world_size, n = M.size();
@@ -269,14 +310,13 @@ using namespace std;
             }
         }
     }
+    */
+
+
 
 // Основная функция программы.
 void doKholesky(int argc, char** argv, int a_size) {
-    int numProc, rank;
-    MPI_Init(&argc, &argv); // MPI-инициализация
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
-    MPI_Comm_size(MPI_COMM_WORLD, &numProc); // Кол-во процессов
-    
+
     //Создание симметричной положительно определённой матрицы А
     vector<vector<float>> a_matrix(a_size, vector <float>(a_size));
     GenMatA(a_matrix);
@@ -292,31 +332,33 @@ void doKholesky(int argc, char** argv, int a_size) {
             }
         }
 
-        if (rank == 0) {
-            ShowMatrix(l_matrix);
-            double startTime = MPI_Wtime();
+       
+ //           ShowMatrix(l_matrix);
+            std::chrono::time_point<std::chrono::system_clock> startTime = chrono::system_clock::now();
             FindMatLSerial(l_matrix);
-            double endTime = MPI_Wtime();
-            cout << "Serial Calculation time: " << endTime - startTime << endl;
-        }
-        double startTime = MPI_Wtime();
-        FindMatLParallel(l_matrix_copy);
-        double endTime = MPI_Wtime();
-        if (rank == 0) cout << "Parallel Calculation time: " << endTime - startTime << endl;
+            std::chrono::time_point<std::chrono::system_clock> endTime = chrono::system_clock::now(); 
+            cout << "Serial Calculation time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() /1e9 << endl;
+        
+//        ShowMatrix(l_matrix_copy);
+        std::chrono::time_point<std::chrono::system_clock> startTime1 = chrono::system_clock::now();
+        FindMatLParallel(argc, argv, l_matrix_copy);
+        std::chrono::time_point<std::chrono::system_clock> endTime1 = chrono::system_clock::now();
+        cout << "Parallel Calculation time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime1 - startTime1).count() / 1e9 << endl;
+
 
     // Создание вектора b (Выполняется главны потоком)
     vector <float> b_vector(a_size);
-    if (rank == 0) {
+    
         for (int j = 0; j < a_size; j++) {
             b_vector[j] = rand() % 10; // заполняем строки элементами
         }
         cout << "Vector [b]:\n";
-        ShowVector(b_vector);
-    }
+//        ShowVector(b_vector);
+   
 
     // Добавление вектора b к СЛАУ: [LY = B] (Выполняется главны потоком)
     vector<vector<float>> lb_matrix(a_size, vector <float>(a_size+1));
-    if (rank == 0){
+   
         for (int i = 0; i < a_size; i++) {
             for (int j = 0; j < a_size + 1; j++) {
                 if (j == a_size) {
@@ -327,19 +369,19 @@ void doKholesky(int argc, char** argv, int a_size) {
             }
         }
         cout << "[LY = B] matrix\n";
-        ShowMatrixEx(lb_matrix);
-    }
+//        ShowMatrixEx(lb_matrix);
+    
 
     double delta = 1e-08;
-    if (rank == 0) {
+   
         SolveMatrix(lb_matrix, delta);
-        cout << " SOLVED [LY = B] matrix\n";
-        ShowMatrixEx(lb_matrix);
-    }
+//        cout << " SOLVED [LY = B] matrix\n";
+//        ShowMatrixEx(lb_matrix);
+    
 
     // транспонирование матрицы L (Выполняется главны потоком)
     vector<vector<float>> lt_matrix(a_size, vector <float>(a_size));
-    if (rank == 0) {
+    
         for (int i = 0; i < a_size; i++) {
             for (int j = 0; j < a_size; j++) {
                 lt_matrix[i][j] = l_matrix[j][i];
@@ -355,15 +397,13 @@ void doKholesky(int argc, char** argv, int a_size) {
                 lx_matrix[i][j] = lt_matrix[i][j];
             }
         }
-        cout << "[LtX = Y] matrix\n";
-        ShowMatrixEx(lx_matrix);
+//        cout << "[LtX = Y] matrix\n";
+//        ShowMatrixEx(lx_matrix);
         SolveMatrix(lx_matrix, delta); // Решение СЛАУ методом Гаусса-Жордана
-        cout << "SOLVED [LtX = Y] matrix\n";
-        ShowMatrixEx(lx_matrix); // Вывод конечной единичной матрицы
-        ShowResult(lx_matrix); // Вывод решения СЛАУ Ax = b
-    }
-
-    MPI_Finalize(); // Завершение MPI программы
+//        cout << "SOLVED [LtX = Y] matrix\n";
+//        ShowMatrixEx(lx_matrix); // Вывод конечной единичной матрицы
+//        ShowResult(lx_matrix); // Вывод решения СЛАУ Ax = b
+        MPI_Finalize();
 }
 
 
@@ -371,7 +411,7 @@ void doKholesky(int argc, char** argv, int a_size) {
 
 int main(int argc, char** argv)
 {
-    const int a_size = 3;
+    const int a_size = 1500;
     doKholesky(argc, argv, a_size);
 	return 0;
 }
