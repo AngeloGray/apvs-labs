@@ -87,6 +87,8 @@ using namespace std;
 
     //Функция для генерации и преобразования матрицы A
     void GenMatA(vector<vector <float>> &a_matrix){
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
         // Создание матрицы А
         vector<vector<float>> a_matrix_v1(a_matrix.size());
         // Заполнение матрицы случайными элементами (симметрично)
@@ -95,7 +97,7 @@ using namespace std;
                 a_matrix_v1[i].push_back(rand() % 10); // заполняем строки элементами
             }                                 // a[i][j] = {0, 9}
         }
-        ShowMatrix(a_matrix_v1);
+        if (rank == 0) ShowMatrix(a_matrix_v1);
         // Транспонирование матрицы
         vector<vector<float>> a_matrix_v2(a_matrix.size(), vector <float>(a_matrix.size()));
         for (int i = 0; i < a_matrix.size(); i++) {
@@ -103,7 +105,7 @@ using namespace std;
                 a_matrix_v2[i][j] = a_matrix_v1[j][i];
             }
         }
-        ShowMatrix(a_matrix_v2);
+        if (rank == 0)ShowMatrix(a_matrix_v2);
         float result = 0;
         //Fill each cell of the matrix output.
         for (int i = 0; i < a_matrix.size(); i++) {
@@ -116,12 +118,14 @@ using namespace std;
                 result = 0; //Reset;
             }
         }
-        cout << "Matrix A:\n";
-        ShowMatrix(a_matrix);
+        if (rank == 0)cout << "Matrix A:\n";
+        if (rank == 0)ShowMatrix(a_matrix);
     }
 
+ 
     //Функция для нахождения матрицы L методом Холецкого
-    void FindMatL(vector<vector<float>> &l_matrix) {
+  
+    void FindMatLSerial(vector<vector<float>> &l_matrix) {
         int numProc, rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Ранг текущего процесса
         MPI_Comm_size(MPI_COMM_WORLD, &numProc); // Кол-во процессов
@@ -138,11 +142,133 @@ using namespace std;
                     l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
                 }
             }
-            cout << "SOLVED L_Matrix\n";
+            cout << "Serial Cholesky decomposition of matrix A: L= \n";
             ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
         }
     }
 
+
+    //Функция для нахождения матрицы L методом Холецкого
+   /*
+    void FindMatL(vector<vector<float>>& l_matrix) {
+        int numProc, rank;
+        MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+        double start, end;
+        MPI_Barrier(MPI_COMM_WORLD); 
+        if (rank == 0) {
+            start = MPI_Wtime();
+        }
+
+        // For each column
+        int i, j, k;
+        for (j = 0; j < l_matrix.size(); j++) {
+  
+             * Step 1:
+             * Update the diagonal element
+
+
+            if (j % numProc == rank) {
+
+                for (k = 0; k < j; k++) {
+                    l_matrix[j][j] = l_matrix[j][j] - l_matrix[j][k] * l_matrix[j][k];
+                }
+
+                l_matrix[j][j] = sqrt(l_matrix[j][j]);
+            }
+
+
+            // Broadcast row with new values to other processes
+            MPI_Bcast(l_matrix[j], l_matrix.size(), MPI_FLOAT, j % numProc, MPI_COMM_WORLD);
+
+     
+             * Step 2:
+             * Update the elements below the diagonal element
+      
+
+             // Divide the rest of the work
+            for (i = j + 1; i < l_matrix.size(); i++) {
+                if (i % numProc == rank) {
+                    for (k = 0; k < j; k++) {
+                        l_matrix[i][j] = l_matrix[i][j] - l_matrix[i][k] * l_matrix[j][k];
+                    }
+
+                    l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
+                }
+            }
+        }
+
+
+        MPI_Barrier(MPI_COMM_WORLD); 
+        if (rank == 0) {
+            end = MPI_Wtime();
+            printf("Testing OpenMpi implementation Output: \n");
+            printf("Runtime = %lf\n", end - start);
+        }
+    }
+    */
+
+    //Функция для нахождения матрицы L методом Холецкого
+    void FindMatLParallel(vector <vector <float>>& M) {
+        int world_rank, world_size, n = M.size();
+        MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+        for (int k = 0; k < n; k++)//k-column index (algorithm goes below of diagonal from left to right)
+        {
+            if (world_rank == 0) {
+                //0 procesor calculates every diagonal element
+                for (int j = 0; j < k; j++)
+                {
+                    M[k][k] -= (M[k][j] * M[k][j]);
+                }
+                M[k][k] = sqrt(M[k][k]);
+
+                for (int p = 1; p < n - k; p++) //p-processor index to which 0 processor sends a given task
+                {
+                    for (int c = 0; c <= k; c++)//processor 0 sends already calculated values
+                    {
+                        for (int r = c; r < n; r++)
+                        {
+                            MPI_Send(&M[r][c], 1, MPI_FLOAT, p, 0, MPI_COMM_WORLD);
+                        }
+                    }
+                    MPI_Recv(&M[p + k][k], 1, MPI_FLOAT, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                }
+                if (k == n - 1){
+
+                    //print result to the screen
+                    cout <<"Parallel Cholesky decomposition of matrix A: L= \n";
+                    for (int i = 0; i < n; i++) {
+                        for (int j = 0; j < n; j++) {
+                            cout << M[i][j];
+                            if (j != n - 1)
+                            {
+                                cout << ", ";
+                            }
+                        }
+                        cout << endl;
+                    }
+                }
+            }
+            else if (world_rank < n - k) {
+                for (int c = 0; c <= k; c++)//receving already calculated values
+                {
+                    for (int r = c; r < n; r++)
+                    {
+                        MPI_Recv(&M[r][c], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    }
+                }
+
+                for (int g = 0; g < k; g++)//calculating non-diagonal elements concurrently
+                {
+                    M[k + world_rank][k] -= M[k][g] * M[k + world_rank][g];
+                }
+                M[k + world_rank][k] /= M[k][k];
+                MPI_Send(&M[k + world_rank][k], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+            }
+        }
+    }
 
 // Основная функция программы.
 void doKholesky(int argc, char** argv, int a_size) {
@@ -153,18 +279,30 @@ void doKholesky(int argc, char** argv, int a_size) {
     
     //Создание симметричной положительно определённой матрицы А
     vector<vector<float>> a_matrix(a_size, vector <float>(a_size));
-    if (rank == 0) GenMatA(a_matrix);
+    GenMatA(a_matrix);
 
     // Копирование в матрицу L нижней треугольной матрицы из А
     // Основные вычисления для разложения Холецкого - поиск матрицы L
     vector<vector<float>> l_matrix(a_size, vector <float>(a_size));
+    vector<vector<float>> l_matrix_copy(a_size, vector <float>(a_size));
         for (int i = 0; i < a_size; i++) {
             for (int j = 0; j <= i; j++) {
                 l_matrix[i][j] = a_matrix[i][j];
+                l_matrix_copy[i][j] = a_matrix[i][j];
             }
         }
-        if (rank == 0) ShowMatrix(l_matrix);
-        FindMatL(l_matrix);
+
+        if (rank == 0) {
+            ShowMatrix(l_matrix);
+            double startTime = MPI_Wtime();
+            FindMatLSerial(l_matrix);
+            double endTime = MPI_Wtime();
+            cout << "Serial Calculation time: " << endTime - startTime << endl;
+        }
+        double startTime = MPI_Wtime();
+        FindMatLParallel(l_matrix_copy);
+        double endTime = MPI_Wtime();
+        if (rank == 0) cout << "Parallel Calculation time: " << endTime - startTime << endl;
 
     // Создание вектора b (Выполняется главны потоком)
     vector <float> b_vector(a_size);
@@ -233,7 +371,7 @@ void doKholesky(int argc, char** argv, int a_size) {
 
 int main(int argc, char** argv)
 {
-    int a_size = 3;
+    const int a_size = 3;
     doKholesky(argc, argv, a_size);
 	return 0;
 }
