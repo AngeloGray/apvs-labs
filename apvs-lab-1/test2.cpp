@@ -123,27 +123,29 @@ void MasterThread() {
 
     // Реализация расчётом методом квадратных корней (Разложение Холецкого)
     vector<vector<float>> l_matrix(a_size, vector <float>(a_size));
+            // Создание пустой матрицы L
             for (int i = 0; i < a_size; i++) {
                 for (int j = 0; j < a_size; j++) {
                     l_matrix[i][j] = 0;
                 }
             }
-
+            // Копирование в неё нижней треугольной матрицы из А
             for (int i = 0; i < a_size; i++) {
                 for (int j = 0; j <= i; j++) {
                     l_matrix[i][j] = a_matrix[i][j];
                 }
             }
+            // Вычисление матрицы L методом Хоолецкого
             for (int j = 0; j < a_size; j++) {
                 for (int k = 0; k < j; k++) {
                     for (int i = j; i < a_size; i++) {
                         l_matrix[i][j] = l_matrix[i][j] - l_matrix[i][k] * l_matrix[j][k];
                     }
                 }
-                l_matrix[j][j] = sqrt(l_matrix[j][j]);
-                for (int i = j + 1; i < a_size; i++) {
-                    l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
-                }
+            l_matrix[j][j] = sqrt(l_matrix[j][j]);
+            for (int i = j + 1; i < a_size; i++) {
+                l_matrix[i][j] = l_matrix[i][j] / l_matrix[j][j];
+            }
             }
            cout << "L_matrix\n";
            ShowMatrix(l_matrix); // получили нижнюю треугольную матрицу
@@ -173,6 +175,8 @@ void MasterThread() {
     cout << "LB_matrix_solved\n";
     ShowMatrixEx(lb_matrix);
 
+    
+    
     // транспонирование матрицы L
     vector<vector<float>> lt_matrix(a_size, vector <float>(a_size));
     for (int i = 0; i < a_size; i++) {
